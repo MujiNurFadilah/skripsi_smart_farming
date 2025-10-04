@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPK Penyiraman Tanaman Otomatis - Fuzzy Tsukamoto & IoT Monitoring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'green-custom': '#10b981',
+                        'blue-custom': '#3b82f6'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .sensor-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .sensor-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        }
+
+        .sensor-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .sensor-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-size: 1.2rem;
+        }
+
+        .moisture-icon { background: linear-gradient(45deg, #4CAF50, #8BC34A); }
+        .temp-icon { background: linear-gradient(45deg, #FF9800, #FF5722); }
+        .humidity-icon { background: linear-gradient(45deg, #2196F3, #03A9F4); }
+        .rain-icon { background: linear-gradient(45deg, #607D8B, #455A64); }
+        .pump-icon { background: linear-gradient(45deg, #9C27B0, #E91E63); }
+        .duration-icon { background: linear-gradient(45deg, #795548, #8D6E63); }
+
+        .sensor-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin: 8px 0;
+            color: #2c3e50;
+        }
+
+        .sensor-status {
+            font-size: 0.8rem;
+            padding: 4px 10px;
+            border-radius: 15px;
+            display: inline-block;
+            margin-top: 8px;
+        }
+
+        .status-normal { background: #e8f5e8; color: #2e7d32; }
+        .status-warning { background: #fff3e0; color: #f57c00; }
+        .status-critical { background: #ffebee; color: #c62828; }
+        .status-on { background: #e8f5e8; color: #2e7d32; }
+        .status-off { background: #ffebee; color: #c62828; }
+
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                🌱 Sistem Penyiraman Tanaman Otomatis
+            </h1>
+            <h2 class="text-2xl font-semibold text-green-600 mb-4">
+                Fuzzy Logic & IoT Monitoring
+            </h2>
+            <p class="text-gray-600 max-w-3xl mx-auto">
+                Sistem terintegrasi menggunakan metode Fuzzy Tsukamoto untuk perhitungan kebutuhan penyiraman dan monitoring real-time kondisi tanaman
+            </p>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="flex justify-center mb-8">
+            <div class="bg-white rounded-xl shadow-lg p-2 flex space-x-2">
+                <button id="calculatorTab" class="tab-button active px-6 py-3 rounded-lg font-semibold transition-all duration-300">
+                    🧮 Kalkulator Fuzzy
+                </button>
+                <button id="monitoringTab" class="tab-button px-6 py-3 rounded-lg font-semibold text-gray-600 hover:text-gray-800 transition-all duration-300">
+                    📊 Monitoring IoT
+                </button>
+                <button id="insightsTab" class="tab-button px-6 py-3 rounded-lg font-semibold text-gray-600 hover:text-gray-800 transition-all duration-300">
+                    📈 Insights & Riwayat
+                </button>
+            </div>
+        </div>
+
+        <!-- Calculator Section -->
+        <div id="calculatorSection" class="max-w-4xl mx-auto">
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Form Input -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                        📊 Input Data
+                    </h3>
+                    
+                    <form id="fuzzyForm" class="space-y-6">
+                        <!-- Input Kelembaban -->
+                        <div>
+                            <label for="kelembaban" class="block text-sm font-medium text-gray-700 mb-2">
+                                Kelembaban Tanah (%)
+                            </label>
+                            <div class="relative">
+                                <input 
+                                    type="number" 
+                                    id="kelembaban" 
+                                    name="kelembaban" 
+                                    min="0" 
+                                    max="100" 
+                                    step="0.1"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
+                                    placeholder="Masukkan nilai 0-100"
+                                    required
+                                >
+                                <span class="absolute right-3 top-3 text-gray-500">%</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Rentang: 0% (sangat kering) - 100% (sangat basah)</p>
+                        </div>
+
+                        <!-- Input Cuaca -->
+                        <div>
+                            <label for="cuaca" class="block text-sm font-medium text-gray-700 mb-2">
+                                Kondisi Cuaca Lokal
+                            </label>
+                            <select 
+                                id="cuaca" 
+                                name="cuaca" 
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition duration-200"
+                                required
+                            >
+                                <option value="">Pilih kondisi cuaca</option>
+                                <option value="Cerah">☀️ Cerah</option>
+                                <option value="Berawan">⛅ Berawan</option>
+                                <option value="Hujan Ringan">🌦️ Hujan Ringan</option>
+                                <option value="Hujan Lebat">🌧️ Hujan Lebat</option>
+                            </select>
+                        </div>
+
+                        <!-- Tombol Submit -->
+                        <button 
+                            type="submit" 
+                            class="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white font-semibold py-3 px-6 rounded-lg hover:from-green-600 hover:to-blue-600 transform hover:scale-105 transition duration-200 shadow-lg"
+                        >
+                            🔄 Hitung Kebutuhan Penyiraman
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Hasil Perhitungan -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                        📋 Hasil Perhitungan
+                    </h3>
+                    
+                    <div id="resultContainer" class="hidden">
+                        <!-- Hasil Utama -->
+                        <div class="bg-gradient-to-r from-green-100 to-blue-100 rounded-lg p-4 mb-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600">Tingkat Kebutuhan</p>
+                                    <p id="tingkatKebutuhan" class="text-2xl font-bold text-green-600"></p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-sm text-gray-600">Durasi Penyiraman</p>
+                                    <p id="durasiPenyiraman" class="text-2xl font-bold text-blue-600"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Detail Fuzzifikasi -->
+                        <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                            <h4 class="font-semibold text-gray-800 mb-3">🔍 Detail Fuzzifikasi</h4>
+                            <div id="fuzzifikasiDetail" class="space-y-2 text-sm"></div>
+                        </div>
+
+                        <!-- Aturan yang Aktif -->
+                        <div class="bg-yellow-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-gray-800 mb-3">⚡ Aturan Fuzzy yang Aktif</h4>
+                            <div id="rulesDetail" class="space-y-2 text-sm"></div>
+                        </div>
+                    </div>
+
+                    <div id="placeholderResult" class="text-center text-gray-500 py-8">
+                        <div class="text-6xl mb-4">🌿</div>
+                        <p>Masukkan data untuk melihat hasil perhitungan</p>
+                    </div>
+
+                    <div id="errorContainer" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
+                        <p id="errorMessage"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insights Section -->
+            <div id="insights-section" class="hidden mt-8">
+                <div class="bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-lg border border-purple-200">
+                    <h3 class="text-xl font-bold text-purple-800 mb-4 flex items-center">
+                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                        Analisis & Insight
+                    </h3>
+                    
+                    <!-- Summary -->
+                    <div class="mb-4 p-4 bg-white rounded-lg border border-purple-100">
+                        <h4 class="font-semibold text-gray-800 mb-2">📋 Ringkasan</h4>
+                        <p id="insight-summary" class="text-gray-700"></p>
+                    </div>
+                    
+                    <!-- Insights -->
+                    <div class="mb-4 p-4 bg-white rounded-lg border border-purple-100">
+                        <h4 class="font-semibold text-gray-800 mb-2">🔍 Analisis Kondisi</h4>
+                        <ul id="insight-list" class="space-y-2"></ul>
+                    </div>
+                    
+                    <!-- Recommendations -->
+                    <div class="mb-4 p-4 bg-white rounded-lg border border-purple-100">
+                        <h4 class="font-semibold text-gray-800 mb-2">💡 Rekomendasi</h4>
+                        <ul id="recommendation-list" class="space-y-2"></ul>
+                    </div>
+                    
+                    <!-- Warnings -->
+                    <div id="warnings-container" class="hidden mb-4 p-4 bg-red-50 rounded-lg border border-red-200">
+                        <h4 class="font-semibold text-red-800 mb-2">⚠️ Peringatan</h4>
+                        <ul id="warning-list" class="space-y-2"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grafik Fungsi Keanggotaan -->
+            <div class="mt-8 bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    📊 Grafik Fungsi Keanggotaan Kelembaban Tanah
+                </h3>
+                <div class="text-center">
+                    <div id="membershipGraphContainer" class="bg-gray-50 rounded-lg p-4 mb-4">
+                        <div id="graphPlaceholder" class="text-gray-500 py-8">
+                            <div class="text-4xl mb-2">📈</div>
+                            <p>Klik tombol di bawah untuk menampilkan grafik fungsi keanggotaan</p>
+                        </div>
+                        <img id="membershipGraph" class="hidden w-full max-w-4xl mx-auto rounded-lg shadow-sm" alt="Grafik Fungsi Keanggotaan">
+                    </div>
+                    <button 
+                        id="loadGraphBtn" 
+                        class="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-2 px-6 rounded-lg hover:from-purple-600 hover:to-pink-600 transform hover:scale-105 transition duration-200 shadow-lg"
+                    >
+                        📊 Tampilkan Grafik Keanggotaan
+                    </button>
+                </div>
+            </div>
+
+            <!-- Penjelasan Metode -->
+            <div class="mt-8 bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    🧠 Penjelasan Metode Fuzzy Tsukamoto
+                </h3>
+                <div class="grid md:grid-cols-3 gap-6 text-sm text-gray-600">
+                    <div>
+                        <h4 class="font-semibold text-gray-800 mb-2">1. Fuzzifikasi</h4>
+                        <p>Mengubah input kelembaban tanah dan cuaca menjadi nilai keanggotaan fuzzy (0-1) untuk setiap kategori (rendah, sedang, tinggi).</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800 mb-2">2. Inferensi</h4>
+                        <p>Menerapkan aturan fuzzy IF-THEN untuk menentukan output berdasarkan kombinasi input menggunakan operator MIN.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800 mb-2">3. Defuzzifikasi</h4>
+                        <p>Menggunakan metode Tsukamoto (weighted average) untuk menghasilkan nilai crisp durasi penyiraman dalam detik.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monitoring Section -->
+        <div id="monitoringSection" class="hidden max-w-6xl mx-auto">
+            <!-- Fuzzy Integration Status -->
+            <div id="fuzzy-integration-status" class="hidden bg-gradient-to-r from-green-100 to-blue-100 border border-green-300 rounded-lg p-4 mb-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="text-2xl mr-3">🧠</div>
+                        <div>
+                            <h4 class="font-semibold text-green-800">Data dari Perhitungan Fuzzy Aktif</h4>
+                            <p class="text-sm text-green-600">Monitoring menggunakan hasil perhitungan fuzzy terbaru</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <div class="text-right text-sm">
+                            <div class="text-gray-600">Cuaca Input:</div>
+                            <div id="fuzzy-weather-input" class="font-semibold text-blue-600">--</div>
+                        </div>
+                        <div class="text-right text-sm">
+                            <div class="text-gray-600">Tingkat Kebutuhan:</div>
+                            <div id="fuzzy-need-level" class="font-semibold text-green-600">--</div>
+                        </div>
+                        <button id="reset-fuzzy-btn" class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition">
+                            Reset ke Dummy
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Sensor Data -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <!-- Kelembaban Tanah -->
+                <div class="sensor-card">
+                    <div class="sensor-header">
+                        <div class="sensor-icon moisture-icon">💧</div>
+                        <div>
+                            <div class="font-semibold text-gray-800">Kelembaban Tanah</div>
+                            <div class="text-xs text-gray-500">Real-time</div>
+                        </div>
+                    </div>
+                    <div class="sensor-value">
+                        <span id="moisture-value">--</span>
+                        <span class="text-lg text-gray-500">%</span>
+                    </div>
+                    <div id="moisture-status" class="sensor-status">Memuat...</div>
+                </div>
+
+                <!-- Suhu -->
+                <div class="sensor-card">
+                    <div class="sensor-header">
+                        <div class="sensor-icon temp-icon">🌡️</div>
+                        <div>
+                            <div class="font-semibold text-gray-800">Suhu</div>
+                            <div class="text-xs text-gray-500">Real-time</div>
+                        </div>
+                    </div>
+                    <div class="sensor-value">
+                        <span id="temp-value">--</span>
+                        <span class="text-lg text-gray-500">°C</span>
+                    </div>
+                    <div id="temp-status" class="sensor-status">Memuat...</div>
+                </div>
+
+                <!-- Kelembaban Udara -->
+                <div class="sensor-card">
+                    <div class="sensor-header">
+                        <div class="sensor-icon humidity-icon">💨</div>
+                        <div>
+                            <div class="font-semibold text-gray-800">Udara</div>
+                            <div class="text-xs text-gray-500">Real-time</div>
+                        </div>
+                    </div>
+                    <div class="sensor-value">
+                        <span id="humidity-value">--</span>
+                        <span class="text-lg text-gray-500">%</span>
+                    </div>
+                    <div id="humidity-status" class="sensor-status">Memuat...</div>
+                </div>
+
+                <!-- Curah Hujan -->
+                <div class="sensor-card">
+                    <div class="sensor-header">
+                        <div class="sensor-icon rain-icon">🌧️</div>
+                        <div>
+                            <div class="font-semibold text-gray-800">Hujan</div>
+                            <div class="text-xs text-gray-500">Real-time</div>
+                        </div>
+                    </div>
+                    <div class="sensor-value">
+                        <span id="rain-value">--</span>
+                        <span class="text-lg text-gray-500">mm</span>
+                    </div>
+                    <div id="rain-status" class="sensor-status">Memuat...</div>
+                </div>
+
+                <!-- Status Pompa -->
+                <div class="sensor-card">
+                    <div class="sensor-header">
+                        <div class="sensor-icon pump-icon">⚡</div>
+                        <div>
+                            <div class="font-semibold text-gray-800">Status Pompa</div>
+                            <div class="text-xs text-gray-500">Real-time</div>
+                        </div>
+                    </div>
+                    <div class="sensor-value">
+                        <span id="pump-value">--</span>
+                    </div>
+                    <div id="pump-status" class="sensor-status">Memuat...</div>
+                </div>
+
+                <!-- Durasi Penyiraman -->
+                <div class="sensor-card">
+                    <div class="sensor-header">
+                        <div class="sensor-icon duration-icon">⏱️</div>
+                        <div>
+                            <div class="font-semibold text-gray-800">Durasi</div>
+                            <div class="text-xs text-gray-500">Real-time</div>
+                        </div>
+                    </div>
+                    <div class="sensor-value">
+                        <span id="duration-value">--</span>
+                        <span class="text-lg text-gray-500">detik</span>
+                    </div>
+                    <div id="duration-status" class="sensor-status">Memuat...</div>
+                </div>
+            </div>
+
+            <!-- Chart Container -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-semibold text-gray-800">📈 Grafik Monitoring Real-time</h3>
+                    <div class="flex items-center space-x-2 text-sm text-gray-500">
+                        <div class="loading"></div>
+                        <span>Update otomatis setiap 3 detik</span>
+                    </div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-6" id="chart-canvas">
+                    <div class="text-center text-gray-500">
+                        <div class="loading mx-auto mb-2"></div>
+                        <span>Memuat data grafik...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Last Update Info -->
+            <div class="text-center text-gray-600 text-sm">
+                Terakhir diperbarui: <span id="last-update" class="font-mono">--</span>
+            </div>
+        </div>
+
+        <!-- Insights Section -->
+        <div id="insightsSection" class="hidden max-w-6xl mx-auto">
+            <!-- Statistics Cards -->
+            <div class="grid md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white rounded-xl shadow-lg p-6 text-center">
+                    <div class="text-3xl font-bold text-blue-600" id="total-calculations">0</div>
+                    <div class="text-gray-600 mt-2">Total Perhitungan</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-lg p-6 text-center">
+                    <div class="text-3xl font-bold text-green-600" id="avg-duration">0</div>
+                    <div class="text-gray-600 mt-2">Rata-rata Durasi (menit)</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-lg p-6 text-center">
+                    <div class="text-3xl font-bold text-purple-600" id="most-common-weather">-</div>
+                    <div class="text-gray-600 mt-2">Cuaca Tersering</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-lg p-6 text-center">
+                    <div class="text-3xl font-bold text-orange-600" id="most-common-need">-</div>
+                    <div class="text-gray-600 mt-2">Kebutuhan Tersering</div>
+                </div>
+            </div>
+
+            <!-- Charts and Analysis -->
+            <div class="grid md:grid-cols-2 gap-8 mb-8">
+                <!-- Weather Distribution -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">📊 Distribusi Cuaca</h3>
+                    <div id="weather-chart" class="h-64 flex items-center justify-center text-gray-500">
+                        <div class="text-center">
+                            <div class="loading mx-auto mb-2"></div>
+                            <span>Memuat data cuaca...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Need Level Distribution -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">📈 Distribusi Tingkat Kebutuhan</h3>
+                    <div id="need-chart" class="h-64 flex items-center justify-center text-gray-500">
+                        <div class="text-center">
+                            <div class="loading mx-auto mb-2"></div>
+                            <span>Memuat data kebutuhan...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Calculations History -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-semibold text-gray-800">📋 Riwayat Perhitungan Terbaru</h3>
+                    <div class="flex space-x-2">
+                        <select id="weather-filter" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="">Semua Cuaca</option>
+                            <option value="Cerah">Cerah</option>
+                            <option value="Berawan">Berawan</option>
+                            <option value="Hujan Ringan">Hujan Ringan</option>
+                            <option value="Hujan Lebat">Hujan Lebat</option>
+                        </select>
+                        <button id="refresh-history" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 transition">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50">
+                                <th class="px-4 py-3 text-left font-semibold text-gray-700">Waktu</th>
+                                <th class="px-4 py-3 text-left font-semibold text-gray-700">Kelembaban Input (%)</th>
+                                <th class="px-4 py-3 text-left font-semibold text-gray-700">Cuaca</th>
+                                <th class="px-4 py-3 text-left font-semibold text-gray-700">Durasi (menit)</th>
+                                <th class="px-4 py-3 text-left font-semibold text-gray-700">Tingkat Kebutuhan</th>
+                                <th class="px-4 py-3 text-left font-semibold text-gray-700">Status Pompa</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calculations-table">
+                            <tr>
+                                <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                                    <div class="loading mx-auto mb-2"></div>
+                                    <span>Memuat riwayat perhitungan...</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching functionality
+        let currentTab = 'calculator';
+        let updateInterval;
+        let chartData = [];
+
+        document.getElementById('calculatorTab').addEventListener('click', function() {
+            switchTab('calculator');
+        });
+
+        document.getElementById('monitoringTab').addEventListener('click', function() {
+            switchTab('monitoring');
+        });
+
+        document.getElementById('insightsTab').addEventListener('click', function() {
+            switchTab('insights');
+        });
+
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.add('text-gray-600', 'hover:text-gray-800');
+            });
+            
+            // Hide all sections
+            document.getElementById('calculatorSection').classList.add('hidden');
+            document.getElementById('monitoringSection').classList.add('hidden');
+            document.getElementById('insightsSection').classList.add('hidden');
+            
+            if (tab === 'calculator') {
+                document.getElementById('calculatorTab').classList.add('active');
+                document.getElementById('calculatorTab').classList.remove('text-gray-600', 'hover:text-gray-800');
+                document.getElementById('calculatorSection').classList.remove('hidden');
+                stopMonitoring();
+            } else if (tab === 'monitoring') {
+                document.getElementById('monitoringTab').classList.add('active');
+                document.getElementById('monitoringTab').classList.remove('text-gray-600', 'hover:text-gray-800');
+                document.getElementById('monitoringSection').classList.remove('hidden');
+                startMonitoring();
+            } else if (tab === 'insights') {
+                document.getElementById('insightsTab').classList.add('active');
+                document.getElementById('insightsTab').classList.remove('text-gray-600', 'hover:text-gray-800');
+                document.getElementById('insightsSection').classList.remove('hidden');
+                stopMonitoring();
+                loadInsights();
+            }
+        }
+
+        // Fuzzy Calculator Functions
+        document.getElementById('fuzzyForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitButton = this.querySelector('button[type="submit"]');
+            
+            // Disable button dan ubah text
+            submitButton.disabled = true;
+            submitButton.innerHTML = '⏳ Menghitung...';
+            
+            // Hide error dan result
+            document.getElementById('errorContainer').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('placeholderResult').classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/calculate', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResult(data.result);
+                } else {
+                    displayError(data.error);
+                }
+            } catch (error) {
+                displayError('Terjadi kesalahan koneksi');
+            } finally {
+                // Re-enable button
+                submitButton.disabled = false;
+                submitButton.innerHTML = '🔄 Hitung Kebutuhan Penyiraman';
+            }
+        });
+        
+        function displayResult(result) {
+            document.getElementById('placeholderResult').classList.add('hidden');
+            document.getElementById('resultContainer').classList.remove('hidden');
+            document.getElementById('insights-section').classList.remove('hidden');
+            
+            // Display insights
+            displayInsights(result.insights);
+            
+            // Tampilkan hasil utama
+            document.getElementById('tingkatKebutuhan').textContent = result.tingkat;
+            document.getElementById('durasiPenyiraman').textContent = result.durasi + ' detik';
+            
+            // Tampilkan detail fuzzifikasi
+            const fuzzDetail = document.getElementById('fuzzifikasiDetail');
+            fuzzDetail.innerHTML = `
+                <div class="flex justify-between">
+                    <span>Kelembaban Rendah:</span>
+                    <span class="font-mono">${result.fuzzifikasi.kelembaban_rendah}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Kelembaban Sedang:</span>
+                    <span class="font-mono">${result.fuzzifikasi.kelembaban_sedang}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Kelembaban Tinggi:</span>
+                    <span class="font-mono">${result.fuzzifikasi.kelembaban_tinggi}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Cuaca Aktif:</span>
+                    <span class="font-semibold">${result.fuzzifikasi.cuaca_aktif}</span>
+                </div>
+            `;
+            
+            // Tampilkan aturan yang aktif
+            const rulesDetail = document.getElementById('rulesDetail');
+            if (result.rules && result.rules.length > 0) {
+                rulesDetail.innerHTML = result.rules.map(rule => `
+                    <div class="flex justify-between items-center bg-white p-2 rounded border">
+                        <span class="text-xs">${rule[2]}</span>
+                        <span class="font-mono text-xs">α=${rule[0].toFixed(3)}, z=${rule[1]}</span>
+                    </div>
+                `).join('');
+            } else {
+                rulesDetail.innerHTML = '<p class="text-gray-500">Tidak ada aturan yang aktif</p>';
+            }
+        }
+        
+        function displayError(message) {
+            document.getElementById('placeholderResult').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            document.getElementById('errorContainer').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+        
+        // Validasi real-time untuk kelembaban
+        document.getElementById('kelembaban').addEventListener('input', function() {
+            const value = parseFloat(this.value);
+            if (value < 0) this.value = 0;
+            if (value > 100) this.value = 100;
+        });
+
+        function displayInsights(insights) {
+            // Display summary
+            document.getElementById('insight-summary').textContent = insights.summary;
+            
+            // Display insights
+            const insightList = document.getElementById('insight-list');
+            insightList.innerHTML = '';
+            insights.insights.forEach(insight => {
+                const li = document.createElement('li');
+                li.className = 'flex items-start space-x-2 text-gray-700';
+                li.innerHTML = `
+                    <span class="text-lg">${insight.charAt(0)}</span>
+                    <span>${insight.substring(2)}</span>
+                `;
+                insightList.appendChild(li);
+            });
+            
+            // Display recommendations
+            const recommendationList = document.getElementById('recommendation-list');
+            recommendationList.innerHTML = '';
+            insights.recommendations.forEach(recommendation => {
+                const li = document.createElement('li');
+                li.className = 'flex items-start space-x-2 text-gray-700';
+                li.innerHTML = `
+                    <span class="text-blue-500">•</span>
+                    <span>${recommendation}</span>
+                `;
+                recommendationList.appendChild(li);
+            });
+            
+            // Display warnings if any
+            const warningsContainer = document.getElementById('warnings-container');
+            const warningList = document.getElementById('warning-list');
+            
+            if (insights.warnings && insights.warnings.length > 0) {
+                warningsContainer.classList.remove('hidden');
+                warningList.innerHTML = '';
+                insights.warnings.forEach(warning => {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-start space-x-2 text-red-700';
+                    li.innerHTML = `
+                        <span class="text-red-500">⚠️</span>
+                        <span>${warning.substring(3)}</span>
+                    `;
+                    warningList.appendChild(li);
+                });
+            } else {
+                warningsContainer.classList.add('hidden');
+            }
+        }
+
+        // Load membership graph
+        document.getElementById('loadGraphBtn').addEventListener('click', async function() {
+            const button = this;
+            const graphImg = document.getElementById('membershipGraph');
+            const placeholder = document.getElementById('graphPlaceholder');
+            
+            // Disable button and show loading
+            button.disabled = true;
+            button.innerHTML = '⏳ Memuat grafik...';
+            
+            try {
+                const response = await fetch('/membership_graph');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Hide placeholder and show graph
+                    placeholder.classList.add('hidden');
+                    graphImg.src = 'data:image/png;base64,' + data.graph;
+                    graphImg.classList.remove('hidden');
+                    
+                    // Update button
+                    button.innerHTML = '✅ Grafik Ditampilkan';
+                    button.classList.remove('from-purple-500', 'to-pink-500', 'hover:from-purple-600', 'hover:to-pink-600');
+                    button.classList.add('from-green-500', 'to-green-600', 'hover:from-green-600', 'hover:to-green-700');
+                } else {
+                    alert('Gagal memuat grafik: ' + data.error);
+                }
+            } catch (error) {
+                alert('Terjadi kesalahan saat memuat grafik');
+            } finally {
+                button.disabled = false;
+                if (button.innerHTML.includes('⏳')) {
+                    button.innerHTML = '📊 Tampilkan Grafik Keanggotaan';
+                }
+            }
+        });
+
+        // IoT Monitoring Functions
+        async function updateSensorData() {
+            try {
+                const response = await fetch('/api/sensor-data');
+                const data = await response.json();
+                
+                // Check if data comes from fuzzy calculation
+                if (data.fuzzy_source) {
+                    // Show fuzzy integration status
+                    document.getElementById('fuzzy-integration-status').classList.remove('hidden');
+                    document.getElementById('fuzzy-weather-input').textContent = data.cuaca_input;
+                    document.getElementById('fuzzy-need-level').textContent = data.tingkat_kebutuhan;
+                    
+                    // Add fuzzy indicator to sensor cards
+                    addFuzzyIndicators(data);
+                } else {
+                    // Hide fuzzy integration status
+                    document.getElementById('fuzzy-integration-status').classList.add('hidden');
+                    removeFuzzyIndicators();
+                }
+                
+                // Update sensor values
+                document.getElementById('moisture-value').textContent = data.kelembaban_tanah;
+                document.getElementById('temp-value').textContent = data.suhu;
+                document.getElementById('humidity-value').textContent = data.udara;
+                document.getElementById('rain-value').textContent = data.hujan;
+                document.getElementById('pump-value').textContent = data.status_pompa;
+                document.getElementById('duration-value').textContent = data.durasi_penyiraman;
+
+                // Update status indicators
+                updateStatus('moisture-status', data.kelembaban_tanah, 'moisture', data.fuzzy_source);
+                updateStatus('temp-status', data.suhu, 'temperature', data.fuzzy_source);
+                updateStatus('humidity-status', data.udara, 'humidity', data.fuzzy_source);
+                updateStatus('rain-status', data.hujan, 'rain', data.fuzzy_source);
+                updateStatus('pump-status', data.status_pompa, 'pump', data.fuzzy_source);
+                updateStatus('duration-status', data.durasi_penyiraman, 'duration', data.fuzzy_source);
+
+                // Update timestamp
+                document.getElementById('last-update').textContent = data.timestamp;
+
+                // Add to chart data
+                chartData.push({
+                    time: new Date().toLocaleTimeString(),
+                    moisture: data.kelembaban_tanah,
+                    temp: data.suhu,
+                    humidity: data.udara,
+                    rain: data.hujan,
+                    fuzzy_source: data.fuzzy_source
+                });
+
+                // Keep only last 20 data points
+                if (chartData.length > 20) {
+                    chartData.shift();
+                }
+
+                updateChart();
+
+            } catch (error) {
+                console.error('Error fetching sensor data:', error);
+            }
+        }
+
+        function addFuzzyIndicators(data) {
+            // Add fuzzy indicators to relevant sensor cards
+            const moistureCard = document.querySelector('#moisture-value').closest('.sensor-card');
+            const durationCard = document.querySelector('#duration-value').closest('.sensor-card');
+            
+            addFuzzyBadge(moistureCard, 'Input Fuzzy');
+            addFuzzyBadge(durationCard, 'Output Fuzzy');
+        }
+
+        function removeFuzzyIndicators() {
+            // Remove all fuzzy badges
+            document.querySelectorAll('.fuzzy-badge').forEach(badge => badge.remove());
+        }
+
+        function addFuzzyBadge(card, text) {
+            // Remove existing badge if any
+            const existingBadge = card.querySelector('.fuzzy-badge');
+            if (existingBadge) existingBadge.remove();
+            
+            // Create new badge
+            const badge = document.createElement('div');
+            badge.className = 'fuzzy-badge absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full';
+            badge.textContent = text;
+            badge.style.position = 'absolute';
+            badge.style.zIndex = '10';
+            
+            // Make card relative positioned
+            card.style.position = 'relative';
+            card.appendChild(badge);
+        }
+
+        // Reset fuzzy data function
+        async function resetFuzzyData() {
+            try {
+                const response = await fetch('/api/reset-fuzzy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    // Hide fuzzy status immediately
+                    document.getElementById('fuzzy-integration-status').classList.add('hidden');
+                    removeFuzzyIndicators();
+                    
+                    // Show success message
+                    alert('Data fuzzy telah direset. Monitoring kembali menggunakan data dummy.');
+                } else {
+                    alert('Gagal mereset data fuzzy');
+                }
+            } catch (error) {
+                console.error('Error resetting fuzzy data:', error);
+                alert('Terjadi kesalahan saat mereset data fuzzy');
+            }
+        }
+
+        function updateStatus(elementId, value, type, isFuzzySource = false) {
+            const element = document.getElementById(elementId);
+            
+            // Add weather-appropriate status for fuzzy source data
+            if (isFuzzySource) {
+                // Get current weather condition from fuzzy integration status
+                const weatherInput = document.getElementById('fuzzy-weather-input').textContent;
+                
+                switch(type) {
+                    case 'temperature':
+                        if (weatherInput === 'Cerah') {
+                            element.textContent = 'Panas (Cerah)';
+                            element.className = 'sensor-status status-warning';
+                        } else if (weatherInput === 'Berawan') {
+                            element.textContent = 'Sedang (Berawan)';
+                            element.className = 'sensor-status status-normal';
+                        } else if (weatherInput === 'Hujan Ringan') {
+                            element.textContent = 'Sejuk (Hujan Ringan)';
+                            element.className = 'sensor-status status-normal';
+                        } else if (weatherInput === 'Hujan Lebat') {
+                            element.textContent = 'Dingin (Hujan Lebat)';
+                            element.className = 'sensor-status status-critical';
+                        }
+                        break;
+                    case 'humidity':
+                        if (weatherInput === 'Cerah') {
+                            element.textContent = 'Rendah (Cerah)';
+                            element.className = 'sensor-status status-warning';
+                        } else if (weatherInput === 'Berawan') {
+                            element.textContent = 'Sedang (Berawan)';
+                            element.className = 'sensor-status status-normal';
+                        } else if (weatherInput === 'Hujan Ringan') {
+                            element.textContent = 'Tinggi (Hujan Ringan)';
+                            element.className = 'sensor-status status-warning';
+                        } else if (weatherInput === 'Hujan Lebat') {
+                            element.textContent = 'Sangat Tinggi (Hujan Lebat)';
+                            element.className = 'sensor-status status-critical';
+                        }
+                        break;
+                    case 'rain':
+                        if (weatherInput === 'Cerah') {
+                            element.textContent = 'Tidak Hujan (Cerah)';
+                            element.className = 'sensor-status status-normal';
+                        } else if (weatherInput === 'Berawan') {
+                            element.textContent = 'Gerimis (Berawan)';
+                            element.className = 'sensor-status status-normal';
+                        } else if (weatherInput === 'Hujan Ringan') {
+                            element.textContent = 'Hujan Ringan';
+                            element.className = 'sensor-status status-warning';
+                        } else if (weatherInput === 'Hujan Lebat') {
+                            element.textContent = 'Hujan Lebat';
+                            element.className = 'sensor-status status-critical';
+                        }
+                        break;
+                    default:
+                        // Use default logic for other sensors
+                        updateStatusDefault(element, value, type);
+                        break;
+                }
+            } else {
+                // Use default logic for non-fuzzy data
+                updateStatusDefault(element, value, type);
+            }
+        }
+
+        function updateStatusDefault(element, value, type) {
+            
+            switch(type) {
+                case 'moisture':
+                    if (value < 30) {
+                        element.textContent = 'Kering';
+                        element.className = 'sensor-status status-critical';
+                    } else if (value < 60) {
+                        element.textContent = 'Normal';
+                        element.className = 'sensor-status status-normal';
+                    } else {
+                        element.textContent = 'Lembab';
+                        element.className = 'sensor-status status-warning';
+                    }
+                    break;
+                case 'temperature':
+                    if (value < 20 || value > 32) {
+                        element.textContent = 'Tidak Optimal';
+                        element.className = 'sensor-status status-warning';
+                    } else {
+                        element.textContent = 'Optimal';
+                        element.className = 'sensor-status status-normal';
+                    }
+                    break;
+                case 'humidity':
+                    if (value < 50) {
+                        element.textContent = 'Rendah';
+                        element.className = 'sensor-status status-warning';
+                    } else if (value < 80) {
+                        element.textContent = 'Normal';
+                        element.className = 'sensor-status status-normal';
+                    } else {
+                        element.textContent = 'Tinggi';
+                        element.className = 'sensor-status status-critical';
+                    }
+                    break;
+                case 'rain':
+                    if (value === 0) {
+                        element.textContent = 'Tidak Hujan';
+                        element.className = 'sensor-status status-normal';
+                    } else if (value < 10) {
+                        element.textContent = 'Hujan Ringan';
+                        element.className = 'sensor-status status-warning';
+                    } else {
+                        element.textContent = 'Hujan Lebat';
+                        element.className = 'sensor-status status-critical';
+                    }
+                    break;
+                case 'pump':
+                    if (value === 'ON') {
+                        element.textContent = 'Aktif';
+                        element.className = 'sensor-status status-on';
+                    } else {
+                        element.textContent = 'Tidak Aktif';
+                        element.className = 'sensor-status status-off';
+                    }
+                    break;
+                case 'duration':
+                    if (value === 0) {
+                        element.textContent = 'Tidak Menyiram';
+                        element.className = 'sensor-status status-normal';
+                    } else if (value <= 15) {
+                        element.textContent = 'Penyiraman Ringan';
+                        element.className = 'sensor-status status-normal';
+                    } else if (value <= 35) {
+                        element.textContent = 'Penyiraman Sedang';
+                        element.className = 'sensor-status status-warning';
+                    } else {
+                        element.textContent = 'Penyiraman Intensif';
+                        element.className = 'sensor-status status-critical';
+                    }
+                    break;
+            }
+        }
+
+        function updateChart() {
+            const canvas = document.getElementById('chart-canvas');
+            if (chartData.length > 0) {
+                const latest = chartData[chartData.length - 1];
+                const isFuzzySource = latest.fuzzy_source;
+                
+                // Get fuzzy input data if available
+                let fuzzyInputs = '';
+                let weatherCondition = '';
+                if (isFuzzySource) {
+                    const weatherElement = document.getElementById('fuzzy-weather-input');
+                    const needLevelElement = document.getElementById('fuzzy-need-level');
+                    if (weatherElement && needLevelElement) {
+                        weatherCondition = weatherElement.textContent;
+                        fuzzyInputs = `
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                                <div class="text-blue-800 font-semibold text-sm mb-2">📊 Data dari Perhitungan Fuzzy</div>
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <div><span class="font-medium">Cuaca:</span> ${weatherCondition}</div>
+                                    <div><span class="font-medium">Tingkat Kebutuhan:</span> ${needLevelElement.textContent}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                // Generate chart cards with fuzzy indicators
+                const chartCards = `
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div class="bg-white rounded-lg p-4 border ${isFuzzySource ? 'border-blue-300 bg-blue-50' : ''}">
+                            <div class="text-green-600 font-bold text-sm mb-1">
+                                Kelembaban Tanah
+                                ${isFuzzySource ? '<span class="text-blue-500 text-xs ml-1">🔗</span>' : ''}
+                            </div>
+                            <div class="text-2xl font-bold text-gray-800">${latest.moisture}%</div>
+                            ${isFuzzySource ? '<div class="text-xs text-blue-600 mt-1">Dari Fuzzy</div>' : ''}
+                        </div>
+                        <div class="bg-white rounded-lg p-4 border ${isFuzzySource ? 'border-blue-300 bg-blue-50' : ''}">
+                            <div class="text-orange-600 font-bold text-sm mb-1">
+                                Suhu
+                                ${isFuzzySource ? '<span class="text-blue-500 text-xs ml-1">🔗</span>' : ''}
+                            </div>
+                            <div class="text-2xl font-bold text-gray-800">${latest.temp}°C</div>
+                            ${isFuzzySource ? `<div class="text-xs text-blue-600 mt-1">${weatherCondition}</div>` : ''}
+                        </div>
+                        <div class="bg-white rounded-lg p-4 border ${isFuzzySource ? 'border-blue-300 bg-blue-50' : ''}">
+                            <div class="text-blue-600 font-bold text-sm mb-1">
+                                Kelembaban Udara
+                                ${isFuzzySource ? '<span class="text-blue-500 text-xs ml-1">🔗</span>' : ''}
+                            </div>
+                            <div class="text-2xl font-bold text-gray-800">${latest.humidity}%</div>
+                            ${isFuzzySource ? `<div class="text-xs text-blue-600 mt-1">${weatherCondition}</div>` : ''}
+                        </div>
+                        <div class="bg-white rounded-lg p-4 border ${isFuzzySource ? 'border-blue-300 bg-blue-50' : ''}">
+                            <div class="text-gray-600 font-bold text-sm mb-1">
+                                Curah Hujan
+                                ${isFuzzySource ? '<span class="text-blue-500 text-xs ml-1">🔗</span>' : ''}
+                            </div>
+                            <div class="text-2xl font-bold text-gray-800">${latest.rain}mm</div>
+                            ${isFuzzySource ? `<div class="text-xs text-blue-600 mt-1">${weatherCondition}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                // Generate historical trend if we have multiple data points
+                let trendSection = '';
+                if (chartData.length > 1) {
+                    const fuzzyCount = chartData.filter(d => d.fuzzy_source).length;
+                    const dummyCount = chartData.length - fuzzyCount;
+                    
+                    trendSection = `
+                        <div class="mt-6 bg-gray-50 rounded-lg p-4">
+                            <div class="text-sm font-semibold text-gray-700 mb-3">📈 Tren Data (${chartData.length} titik data)</div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                <div class="text-center">
+                                    <div class="font-medium text-gray-600">Kelembaban Tanah</div>
+                                    <div class="text-lg font-bold text-green-600">${latest.moisture}%</div>
+                                    <div class="text-gray-500">Saat ini</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-medium text-gray-600">Suhu Rata-rata</div>
+                                    <div class="text-lg font-bold text-orange-600">${(chartData.reduce((sum, d) => sum + d.temp, 0) / chartData.length).toFixed(1)}°C</div>
+                                    <div class="text-gray-500">${chartData.length} data</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-medium text-gray-600">Data Fuzzy</div>
+                                    <div class="text-lg font-bold text-blue-600">${fuzzyCount}</div>
+                                    <div class="text-gray-500">dari ${chartData.length}</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="font-medium text-gray-600">Data Dummy</div>
+                                    <div class="text-lg font-bold text-gray-600">${dummyCount}</div>
+                                    <div class="text-gray-500">dari ${chartData.length}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                canvas.innerHTML = `
+                    ${fuzzyInputs}
+                    ${chartCards}
+                    ${trendSection}
+                    <div class="text-center mt-4 text-sm text-gray-500">
+                        Waktu: ${latest.time} ${isFuzzySource ? '• <span class="text-blue-600 font-medium">Data dari Perhitungan Fuzzy</span>' : '• <span class="text-gray-600">Data Simulasi</span>'}
+                    </div>
+                `;
+            }
+        }
+
+        function startMonitoring() {
+            updateSensorData(); // Initial load
+            updateInterval = setInterval(updateSensorData, 3000); // Update every 3 seconds
+        }
+
+        function stopMonitoring() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        }
+
+        // Page visibility handling
+        document.addEventListener('visibilitychange', function() {
+            if (currentTab === 'monitoring') {
+                if (document.hidden) {
+                    stopMonitoring();
+                } else {
+                    startMonitoring();
+                }
+            }
+        });
+
+        // Insights Functions
+        async function loadInsights() {
+            try {
+                // Load statistics
+                const statsResponse = await fetch('/api/statistics');
+                const statsData = await statsResponse.json();
+                
+                if (statsData.success) {
+                    updateStatistics(statsData.statistics);
+                }
+                
+                // Load calculations history
+                await loadCalculationsHistory();
+                
+                // Load charts
+                await loadInsightCharts();
+                
+            } catch (error) {
+                console.error('Error loading insights:', error);
+            }
+        }
+
+        function updateStatistics(stats) {
+            document.getElementById('total-calculations').textContent = stats.total_calculations || 0;
+            
+            // Calculate average duration
+            const avgDurations = stats.average_duration_by_weather || {};
+            const totalDuration = Object.values(avgDurations).reduce((sum, val) => sum + val, 0);
+            const avgDuration = Object.keys(avgDurations).length > 0 ? 
+                (totalDuration / Object.keys(avgDurations).length).toFixed(1) : 0;
+            document.getElementById('avg-duration').textContent = avgDuration;
+            
+            // Most common weather
+            const weatherDist = stats.weather_distribution || {};
+            const mostCommonWeather = Object.keys(weatherDist).reduce((a, b) => 
+                weatherDist[a] > weatherDist[b] ? a : b, '-');
+            document.getElementById('most-common-weather').textContent = mostCommonWeather;
+            
+            // Most common need level
+            const needDist = stats.need_level_distribution || {};
+            const mostCommonNeed = Object.keys(needDist).reduce((a, b) => 
+                needDist[a] > needDist[b] ? a : b, '-');
+            document.getElementById('most-common-need').textContent = mostCommonNeed;
+        }
+
+        async function loadCalculationsHistory() {
+            try {
+                const weatherFilter = document.getElementById('weather-filter').value;
+                const url = weatherFilter ? 
+                    `/api/calculations?weather=${encodeURIComponent(weatherFilter)}&limit=20` : 
+                    '/api/calculations?limit=20';
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateCalculationsTable(data.calculations);
+                }
+            } catch (error) {
+                console.error('Error loading calculations history:', error);
+                document.getElementById('calculations-table').innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-red-500">
+                            Error memuat data: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function updateCalculationsTable(calculations) {
+            const tbody = document.getElementById('calculations-table');
+            
+            if (calculations.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                            Tidak ada data perhitungan
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = calculations.map(calc => {
+                const date = new Date(calc.timestamp);
+                const formattedDate = date.toLocaleString('id-ID');
+                
+                return `
+                    <tr class="border-b border-gray-100 hover:bg-gray-50">
+                        <td class="px-4 py-3 text-gray-700">${formattedDate}</td>
+                        <td class="px-4 py-3 text-gray-700">${calc.kelembaban_input}%</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${getWeatherBadgeClass(calc.cuaca_input)}">
+                                ${calc.cuaca_input}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-gray-700">${calc.durasi_output} menit</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${getNeedBadgeClass(calc.tingkat_kebutuhan)}">
+                                ${calc.tingkat_kebutuhan}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${calc.status_pompa === 'Aktif' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                ${calc.status_pompa}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function getWeatherBadgeClass(weather) {
+            const classes = {
+                'Cerah': 'bg-yellow-100 text-yellow-800',
+                'Berawan': 'bg-gray-100 text-gray-800',
+                'Hujan Ringan': 'bg-blue-100 text-blue-800',
+                'Hujan Lebat': 'bg-indigo-100 text-indigo-800'
+            };
+            return classes[weather] || 'bg-gray-100 text-gray-800';
+        }
+
+        function getNeedBadgeClass(need) {
+            const classes = {
+                'Rendah': 'bg-green-100 text-green-800',
+                'Sedang': 'bg-yellow-100 text-yellow-800',
+                'Tinggi': 'bg-red-100 text-red-800'
+            };
+            return classes[need] || 'bg-gray-100 text-gray-800';
+        }
+
+        async function loadInsightCharts() {
+            try {
+                const response = await fetch('/api/statistics');
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderWeatherChart(data.statistics.weather_distribution || {});
+                    renderNeedChart(data.statistics.need_level_distribution || {});
+                }
+            } catch (error) {
+                console.error('Error loading charts:', error);
+                document.getElementById('weather-chart').innerHTML = '<div class="text-center text-red-500">Error memuat grafik cuaca</div>';
+                document.getElementById('need-chart').innerHTML = '<div class="text-center text-red-500">Error memuat grafik kebutuhan</div>';
+            }
+        }
+
+        function renderWeatherChart(weatherData) {
+            const chartContainer = document.getElementById('weather-chart');
+            
+            if (Object.keys(weatherData).length === 0) {
+                chartContainer.innerHTML = '<div class="text-center text-gray-500">Belum ada data cuaca</div>';
+                return;
+            }
+            
+            const total = Object.values(weatherData).reduce((sum, val) => sum + val, 0);
+            
+            chartContainer.innerHTML = Object.entries(weatherData).map(([weather, count]) => {
+                const percentage = ((count / total) * 100).toFixed(1);
+                return `
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium text-gray-700">${weather}</span>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-32 bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-500 h-2 rounded-full" style="width: ${percentage}%"></div>
+                            </div>
+                            <span class="text-sm text-gray-600 w-12">${count}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderNeedChart(needData) {
+            const chartContainer = document.getElementById('need-chart');
+            
+            if (Object.keys(needData).length === 0) {
+                chartContainer.innerHTML = '<div class="text-center text-gray-500">Belum ada data kebutuhan</div>';
+                return;
+            }
+            
+            const total = Object.values(needData).reduce((sum, val) => sum + val, 0);
+            const colors = {
+                'Rendah': 'bg-green-500',
+                'Sedang': 'bg-yellow-500',
+                'Tinggi': 'bg-red-500'
+            };
+            
+            chartContainer.innerHTML = Object.entries(needData).map(([need, count]) => {
+                const percentage = ((count / total) * 100).toFixed(1);
+                const colorClass = colors[need] || 'bg-gray-500';
+                return `
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium text-gray-700">${need}</span>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-32 bg-gray-200 rounded-full h-2">
+                                <div class="${colorClass} h-2 rounded-full" style="width: ${percentage}%"></div>
+                            </div>
+                            <span class="text-sm text-gray-600 w-12">${count}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Event listeners for insights
+        document.getElementById('weather-filter').addEventListener('change', loadCalculationsHistory);
+        document.getElementById('refresh-history').addEventListener('click', loadCalculationsHistory);
+
+        // Page visibility handling
+        document.addEventListener('visibilitychange', function() {
+            if (currentTab === 'monitoring') {
+                if (document.hidden) {
+                    stopMonitoring();
+                } else {
+                    startMonitoring();
+                }
+            }
+        });
+
+        // Reset fuzzy button event listener
+        document.getElementById('reset-fuzzy-btn').addEventListener('click', resetFuzzyData);
+    </script>
+</body>
+</html>
