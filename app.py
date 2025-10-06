@@ -522,21 +522,14 @@ def calculate():
                 'suhu': sensor_data['suhu'],
                 'kelembaban_udara': sensor_data['kelembaban_udara'],
                 'curah_hujan': sensor_data['curah_hujan'],
-                'status_pompa': "Aktif" if result['durasi'] > 0 else "Tidak Aktif",
-                'timestamp': datetime.datetime.now()
+                'status_pompa': "Aktif" if result['durasi'] > 0 else "Tidak Aktif"
             }
             
             calculation_id = db_manager.save_calculation(calculation_data)
             print(f"Calculation saved to database with ID: {calculation_id}")
             
-            # Update result with database ID for reference
-            result['database_id'] = calculation_id
-            result['saved_to_database'] = True
-            
         except Exception as db_error:
             print(f"Database error: {str(db_error)}")
-            result['saved_to_database'] = False
-            result['database_error'] = str(db_error)
             # Continue without failing the request
         
         return jsonify({
