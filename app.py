@@ -229,11 +229,11 @@ class FuzzyTsukamoto:
         
         return result
         
-    def generate_membership_graph(self):
-        """Generate membership function graph for soil moisture"""
+    def generate_membership_graph(self, highlight_input=None):
+        """Generate membership function graph for soil moisture with optional input highlighting"""
         # Create figure with Indonesian labels
         plt.style.use('default')
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(12, 8))
         
         # Define x range (0-100% moisture)
         x = np.linspace(0, 100, 1000)
@@ -243,34 +243,106 @@ class FuzzyTsukamoto:
         sedang = [self.kelembaban_sedang(xi) for xi in x]
         tinggi = [self.kelembaban_tinggi(xi) for xi in x]
         
-        # Plot membership functions
-        ax.plot(x, rendah, 'r-', linewidth=2, label='Rendah')
-        ax.plot(x, sedang, 'g-', linewidth=2, label='Sedang') 
-        ax.plot(x, tinggi, 'b-', linewidth=2, label='Tinggi')
+        # Plot membership functions with enhanced styling
+        ax.plot(x, rendah, 'r-', linewidth=3, label='Rendah', alpha=0.8)
+        ax.plot(x, sedang, 'g-', linewidth=3, label='Sedang', alpha=0.8) 
+        ax.plot(x, tinggi, 'b-', linewidth=3, label='Tinggi', alpha=0.8)
         
-        # Customize plot
-        ax.set_xlabel('Kelembaban Tanah (%)', fontsize=12)
-        ax.set_ylabel('Derajat Keanggotaan', fontsize=12)
-        ax.set_title('Fungsi Keanggotaan Kelembaban Tanah', fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=11)
+        # Fill areas under curves for better visualization
+        ax.fill_between(x, rendah, alpha=0.2, color='red')
+        ax.fill_between(x, sedang, alpha=0.2, color='green')
+        ax.fill_between(x, tinggi, alpha=0.2, color='blue')
+        
+        # Highlight input value if provided
+        if highlight_input is not None and 0 <= highlight_input <= 100:
+            # Calculate membership values for the input
+            mu_rendah = self.kelembaban_rendah(highlight_input)
+            mu_sedang = self.kelembaban_sedang(highlight_input)
+            mu_tinggi = self.kelembaban_tinggi(highlight_input)
+            
+            # Draw vertical line at input value
+            ax.axvline(x=highlight_input, color='black', linestyle='--', linewidth=2, alpha=0.7)
+            
+            # Mark membership values with dots
+            ax.plot(highlight_input, mu_rendah, 'ro', markersize=8, markerfacecolor='red', markeredgecolor='darkred', markeredgewidth=2)
+            ax.plot(highlight_input, mu_sedang, 'go', markersize=8, markerfacecolor='green', markeredgecolor='darkgreen', markeredgewidth=2)
+            ax.plot(highlight_input, mu_tinggi, 'bo', markersize=8, markerfacecolor='blue', markeredgecolor='darkblue', markeredgewidth=2)
+            
+            # Add value annotations
+            ax.annotate(f'μ_rendah = {mu_rendah:.3f}', 
+                       xy=(highlight_input, mu_rendah), 
+                       xytext=(highlight_input + 15, mu_rendah + 0.1),
+                       fontsize=10, fontweight='bold', color='darkred',
+                       bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='red', alpha=0.8),
+                       arrowprops=dict(arrowstyle='->', color='red', alpha=0.7))
+            
+            ax.annotate(f'μ_sedang = {mu_sedang:.3f}', 
+                       xy=(highlight_input, mu_sedang), 
+                       xytext=(highlight_input + 15, mu_sedang + 0.1),
+                       fontsize=10, fontweight='bold', color='darkgreen',
+                       bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='green', alpha=0.8),
+                       arrowprops=dict(arrowstyle='->', color='green', alpha=0.7))
+            
+            ax.annotate(f'μ_tinggi = {mu_tinggi:.3f}', 
+                       xy=(highlight_input, mu_tinggi), 
+                       xytext=(highlight_input + 15, mu_tinggi + 0.1),
+                       fontsize=10, fontweight='bold', color='darkblue',
+                       bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='blue', alpha=0.8),
+                       arrowprops=dict(arrowstyle='->', color='blue', alpha=0.7))
+            
+            # Add input value label
+            ax.annotate(f'Input: {highlight_input}%', 
+                       xy=(highlight_input, 0), 
+                       xytext=(highlight_input, -0.15),
+                       fontsize=12, fontweight='bold', color='black',
+                       ha='center',
+                       bbox=dict(boxstyle="round,pad=0.5", facecolor='yellow', alpha=0.8))
+        
+        # Customize plot with enhanced styling
+        ax.set_xlabel('Kelembaban Tanah (%)', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Derajat Keanggotaan', fontsize=14, fontweight='bold')
+        
+        # Dynamic title based on whether input is highlighted
+        if highlight_input is not None:
+            ax.set_title(f'Fungsi Keanggotaan Kelembaban Tanah\nDengan Input Terbaru: {highlight_input}%', 
+                        fontsize=16, fontweight='bold', pad=20)
+        else:
+            ax.set_title('Fungsi Keanggotaan Kelembaban Tanah', 
+                        fontsize=16, fontweight='bold', pad=20)
+        
+        ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.5)
+        ax.legend(fontsize=12, loc='upper right', framealpha=0.9)
         ax.set_xlim(0, 100)
-        ax.set_ylim(0, 1.1)
+        ax.set_ylim(-0.2, 1.2)
         
-        # Add annotations for key points
-        ax.annotate('0%', xy=(0, 1), xytext=(5, 0.9), fontsize=9, alpha=0.7)
-        ax.annotate('20%', xy=(20, 0.5), xytext=(25, 0.6), fontsize=9, alpha=0.7)
-        ax.annotate('40%', xy=(40, 0.5), xytext=(45, 0.6), fontsize=9, alpha=0.7)
-        ax.annotate('60%', xy=(60, 0.5), xytext=(65, 0.6), fontsize=9, alpha=0.7)
-        ax.annotate('100%', xy=(100, 1), xytext=(95, 0.9), fontsize=9, alpha=0.7)
+        # Add enhanced annotations for key transition points
+        key_points = [
+            (0, 'Sangat Kering'),
+            (20, 'Transisi Rendah-Sedang'),
+            (40, 'Optimal Sedang'),
+            (60, 'Transisi Sedang-Tinggi'),
+            (100, 'Sangat Basah')
+        ]
+        
+        for point, label in key_points:
+            ax.axvline(x=point, color='gray', linestyle=':', alpha=0.5)
+            ax.text(point, 1.15, label, rotation=45, ha='left', va='bottom', 
+                   fontsize=9, alpha=0.7, style='italic')
+        
+        # Add color-coded regions
+        ax.axvspan(0, 20, alpha=0.1, color='red', label='_nolegend_')
+        ax.axvspan(20, 60, alpha=0.1, color='green', label='_nolegend_')
+        ax.axvspan(60, 100, alpha=0.1, color='blue', label='_nolegend_')
         
         plt.tight_layout()
         
         # Convert plot to base64 string
         img_buffer = io.BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(img_buffer, format='png', dpi=200, bbox_inches='tight', 
+                   facecolor='white', edgecolor='none')
         img_buffer.seek(0)
         img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        plt.close(fig)  # Close figure to free memory
         return img_base64
     
     def generate_insights(self, kelembaban, cuaca, durasi, tingkat, rules):
@@ -450,14 +522,21 @@ def calculate():
                 'suhu': sensor_data['suhu'],
                 'kelembaban_udara': sensor_data['kelembaban_udara'],
                 'curah_hujan': sensor_data['curah_hujan'],
-                'status_pompa': "Aktif" if result['durasi'] > 0 else "Tidak Aktif"
+                'status_pompa': "Aktif" if result['durasi'] > 0 else "Tidak Aktif",
+                'timestamp': datetime.datetime.now()
             }
             
             calculation_id = db_manager.save_calculation(calculation_data)
             print(f"Calculation saved to database with ID: {calculation_id}")
             
+            # Update result with database ID for reference
+            result['database_id'] = calculation_id
+            result['saved_to_database'] = True
+            
         except Exception as db_error:
             print(f"Database error: {str(db_error)}")
+            result['saved_to_database'] = False
+            result['database_error'] = str(db_error)
             # Continue without failing the request
         
         return jsonify({
@@ -476,15 +555,25 @@ def calculate():
 
 @app.route('/membership_graph')
 def membership_graph():
-    """Generate and return membership function graph"""
+    """Generate and return membership function graph with latest calculation highlight"""
     try:
-        graph_base64 = fuzzy_system.generate_membership_graph()
+        # Get the latest calculation input for highlighting
+        highlight_value = None
+        if latest_fuzzy_result['is_active'] and latest_fuzzy_result['kelembaban_input'] is not None:
+            highlight_value = latest_fuzzy_result['kelembaban_input']
+        
+        # Generate graph with or without highlighting
+        graph_base64 = fuzzy_system.generate_membership_graph(highlight_input=highlight_value)
+        
         return jsonify({
             'success': True,
-            'graph': graph_base64
+            'graph': graph_base64,
+            'highlighted_input': highlight_value,
+            'calculation_data': latest_fuzzy_result if latest_fuzzy_result['is_active'] else None
         })
     except Exception as e:
         return jsonify({
+            'success': False,
             'error': f'Gagal membuat grafik: {str(e)}'
         }), 500
 
