@@ -253,6 +253,138 @@ class FuzzyDatabase:
         finally:
             cursor.close()
     
+    # Authentication Methods
+    def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Get user by username or email"""
+        connection = self.get_connection()
+        if not connection:
+            return None
+            
+        cursor = connection.cursor(dictionary=True)
+        
+        try:
+            query = """
+                SELECT id, username, email, password_hash, full_name, role, is_active, last_login
+                FROM users 
+                WHERE (username = %s OR email = %s) AND is_active = TRUE
+            """
+            cursor.execute(query, (username, username))
+            user = cursor.fetchone()
+            return user
+        except Error as e:
+            print(f"Database error getting user: {e}")
+            return None
+        finally:
+            cursor.close()
+    
+    def update_last_login(self, user_id: int) -> bool:
+        """Update user's last login timestamp"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+            
+        cursor = connection.cursor()
+        
+        try:
+            query = "UPDATE users SET last_login = %s WHERE id = %s"
+            cursor.execute(query, (datetime.now(), user_id))
+            connection.commit()
+            return cursor.rowcount > 0
+        except Error as e:
+            print(f"Database error updating last login: {e}")
+            connection.rollback()
+            return False
+        finally:
+            cursor.close()
+    
+    def create_user(self, username: str, email: str, password_hash: str, 
+                   full_name: str, role: str = 'user') -> int:
+        """Create new user account"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+            
+        cursor = connection.cursor()
+        
+        try:
+            query = """
+                INSERT INTO users (username, email, password_hash, full_name, role)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            cursor.execute(query, (username, email, password_hash, full_name, role))
+            connection.commit()
+            return cursor.lastrowid
+        except Error as e:
+            print(f"Database error creating user: {e}")
+            connection.rollback()
+            return 0
+        finally:
+            cursor.close()
+    
+    def save_user_session(self, user_id: int, session_token: str, 
+                         ip_address: str, user_agent: str, expires_at: datetime) -> bool:
+        """Save user session to database"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+            
+        cursor = connection.cursor()
+        
+        try:
+            query = """
+                INSERT INTO user_sessions (user_id, session_token, ip_address, user_agent, expires_at)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            cursor.execute(query, (user_id, session_token, ip_address, user_agent, expires_at))
+            connection.commit()
+            return True
+        except Error as e:
+            print(f"Database error saving session: {e}")
+            connection.rollback()
+            return False
+        finally:
+            cursor.close()
+    
+    def delete_user_session(self, session_token: str) -> bool:
+        """Delete user session from database"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+            
+        cursor = connection.cursor()
+        
+        try:
+            query = "DELETE FROM user_sessions WHERE session_token = %s"
+            cursor.execute(query, (session_token,))
+            connection.commit()
+            return cursor.rowcount > 0
+        except Error as e:
+            print(f"Database error deleting session: {e}")
+            connection.rollback()
+            return False
+        finally:
+            cursor.close()
+    
+    def cleanup_expired_sessions(self) -> int:
+        """Clean up expired sessions"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+            
+        cursor = connection.cursor()
+        
+        try:
+            query = "DELETE FROM user_sessions WHERE expires_at < %s"
+            cursor.execute(query, (datetime.now(),))
+            connection.commit()
+            return cursor.rowcount
+        except Error as e:
+            print(f"Database error cleaning up sessions: {e}")
+            connection.rollback()
+            return 0
+        finally:
+            cursor.close()
+    
     def close_connection(self):
         """Close database connection"""
         if self.connection and self.connection.is_connected():

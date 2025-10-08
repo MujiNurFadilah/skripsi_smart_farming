@@ -40,13 +40,55 @@ CREATE TABLE IF NOT EXISTS calculation_insights (
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB COMMENT='Tabel untuk menyimpan hasil analisis dan insights';
 
--- 5. Buat user khusus untuk aplikasi (opsional, untuk keamanan)
+-- 5. Buat tabel untuk sistem authentication pengguna
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL COMMENT 'Username unik untuk login',
+    email VARCHAR(100) UNIQUE NOT NULL COMMENT 'Email pengguna',
+    password_hash VARCHAR(255) NOT NULL COMMENT 'Hash password menggunakan bcrypt',
+    full_name VARCHAR(100) NOT NULL COMMENT 'Nama lengkap pengguna',
+    role ENUM('admin', 'user') DEFAULT 'user' COMMENT 'Role pengguna (admin/user)',
+    is_active BOOLEAN DEFAULT TRUE COMMENT 'Status aktif pengguna',
+    last_login DATETIME NULL COMMENT 'Waktu login terakhir',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_username (username),
+    INDEX idx_email (email),
+    INDEX idx_role (role),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB COMMENT='Tabel untuk menyimpan data pengguna dan authentication';
+
+-- 6. Buat tabel untuk session management (opsional, untuk keamanan tambahan)
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    session_token VARCHAR(255) UNIQUE NOT NULL COMMENT 'Token session unik',
+    ip_address VARCHAR(45) COMMENT 'IP address pengguna',
+    user_agent TEXT COMMENT 'User agent browser',
+    expires_at DATETIME NOT NULL COMMENT 'Waktu kadaluarsa session',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_session_token (session_token),
+    INDEX idx_user_id (user_id),
+    INDEX idx_expires_at (expires_at)
+) ENGINE=InnoDB COMMENT='Tabel untuk manajemen session pengguna';
+
+-- 7. Buat user khusus untuk aplikasi (opsional, untuk keamanan)
 -- Ganti 'your_password' dengan password yang kuat
 -- CREATE USER 'fuzzy_app'@'localhost' IDENTIFIED BY 'your_password';
 -- GRANT SELECT, INSERT, UPDATE, DELETE ON fuzzy_irrigation.* TO 'fuzzy_app'@'localhost';
 -- FLUSH PRIVILEGES;
 
--- 6. Insert data contoh (opsional)
+-- 8. Insert data contoh pengguna admin (password: admin123)
+-- Hash bcrypt untuk 'admin123': $2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj3bp.93iHSS
+INSERT INTO users (username, email, password_hash, full_name, role) VALUES 
+('admin', 'admin@fuzzyirrigation.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj3bp.93iHSS', 'Administrator', 'admin'),
+('user1', 'user1@example.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj3bp.93iHSS', 'Pengguna Demo', 'user')
+ON DUPLICATE KEY UPDATE username=username;
+
+-- 9. Insert data contoh (opsional)
 INSERT INTO fuzzy_calculations 
 (kelembaban_input, cuaca_input, durasi_output, tingkat_kebutuhan, kelembaban_tanah, suhu, kelembaban_udara, curah_hujan, status_pompa) 
 VALUES 

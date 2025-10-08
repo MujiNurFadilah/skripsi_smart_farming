@@ -107,7 +107,24 @@
 <body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen">
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
-        <div class="text-center mb-8">
+        <div class="text-center mb-8 relative">
+            <!-- Logout Button -->
+            <div class="absolute top-0 right-0">
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-600">
+                        Selamat datang, <strong>{{ user.username }}</strong>
+                    </span>
+                    <a href="/logout" 
+                       class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-200 flex items-center space-x-2"
+                       onclick="return confirm('Apakah Anda yakin ingin logout?')">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                        <span>Logout</span>
+                    </a>
+                </div>
+            </div>
+            
             <h1 class="text-4xl font-bold text-gray-800 mb-2">
                 🌱 Sistem Penyiraman Tanaman Otomatis
             </h1>

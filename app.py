@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, flash
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
@@ -8,10 +8,21 @@ import base64
 import random
 import datetime
 import time
+import bcrypt
+import secrets
+from functools import wraps
 from database import FuzzyDatabase
 from models import FuzzyCalculation, WeatherConditions, NeedLevels
 
 app = Flask(__name__)
+
+# Configure session
+app.secret_key = secrets.token_hex(32)  # Generate a secure secret key
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_KEY_PREFIX'] = 'fuzzy_irrigation:'
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(hours=24)
 
 # Initialize database with MySQL configuration
 # Sesuaikan parameter koneksi MySQL sesuai dengan setup Anda
@@ -22,6 +33,44 @@ db_manager = FuzzyDatabase(
     password="",          # Password MySQL (kosongkan jika tidak ada password)
     port=3306            # Port MySQL (default: 3306)
 )
+
+# Password utility functions
+def hash_password(password):
+    """Hash password using bcrypt"""
+    try:
+        # Generate salt and hash password
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
+    except Exception as e:
+        print(f"Error hashing password: {e}")
+        return None
+
+def verify_password(password, hashed_password):
+    """Verify password against hash"""
+    try:
+        # Ensure both password and hash are properly encoded
+        if isinstance(password, str):
+            password = password.encode('utf-8')
+        if isinstance(hashed_password, str):
+            hashed_password = hashed_password.encode('utf-8')
+        
+        return bcrypt.checkpw(password, hashed_password)
+    except Exception as e:
+        print(f"Login error: {e}")
+        return False
+
+# Login required decorator
+def login_required(f):
+    """Decorator to require login for protected routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            if request.is_json:
+                return jsonify({'success': False, 'message': 'Login required'}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 class FuzzyTsukamoto:
     def __init__(self):
@@ -464,11 +513,35 @@ latest_fuzzy_result = {
     'is_active': False
 }
 
+# Authentication Helper Functions
+def login_required(f):
+    """Decorator to require login for protected routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            if request.is_json:
+                return jsonify({'success': False, 'message': 'Login required'}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against hash"""
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+# Protect existing routes
 @app.route('/')
+@login_required
 def index():
-    return render_template('index.html')
+    """Main dashboard page (protected)"""
+    return render_template('index.html', user=session)
 
 @app.route('/calculate', methods=['POST'])
+@login_required
 def calculate():
     global latest_fuzzy_result
     
@@ -487,7 +560,6 @@ def calculate():
             return jsonify({
                 'error': 'Kelembaban harus antara 0-100%'
             }), 400
-        
         # Validasi pilihan cuaca
         cuaca_valid = ['Cerah', 'Berawan', 'Hujan Ringan', 'Hujan Lebat']
         if cuaca not in cuaca_valid:
@@ -547,6 +619,7 @@ def calculate():
         }), 500
 
 @app.route('/membership_graph')
+@login_required
 def membership_graph():
     """Generate and return membership function graph with latest calculation highlight"""
     try:
@@ -571,6 +644,7 @@ def membership_graph():
         }), 500
 
 @app.route('/history')
+@login_required
 def history():
     return jsonify({
         'history': fuzzy_system.history
@@ -615,6 +689,7 @@ def generate_weather_based_sensor_data(cuaca_input):
     return suhu, udara, hujan
 
 @app.route('/api/sensor-data')
+@login_required
 def get_sensor_data():
     """API endpoint untuk mendapatkan data sensor IoT dengan integrasi hasil fuzzy"""
     global latest_fuzzy_result
@@ -663,6 +738,7 @@ def get_sensor_data():
 
 # Database and Insights Endpoints
 @app.route('/api/insights')
+@login_required
 def get_insights():
     """API endpoint untuk mendapatkan insight dari data perhitungan fuzzy"""
     try:
@@ -678,6 +754,7 @@ def get_insights():
         }), 500
 
 @app.route('/api/calculations')
+@login_required
 def get_calculations():
     """API endpoint untuk mendapatkan riwayat perhitungan fuzzy"""
     try:
@@ -704,6 +781,7 @@ def get_calculations():
         }), 500
 
 @app.route('/api/calculations/recent')
+@login_required
 def get_recent_calculations():
     """API endpoint untuk mendapatkan perhitungan terbaru"""
     try:
@@ -725,6 +803,7 @@ def get_recent_calculations():
         }), 500
 
 @app.route('/api/statistics')
+@login_required
 def get_statistics():
     """API endpoint untuk mendapatkan statistik perhitungan"""
     try:
@@ -751,6 +830,7 @@ def get_statistics():
 
 # Endpoint untuk reset data fuzzy (opsional)
 @app.route('/api/reset-fuzzy', methods=['POST'])
+@login_required
 def reset_fuzzy_data():
     """Reset data fuzzy untuk kembali ke mode dummy sensor"""
     global latest_fuzzy_result
@@ -770,6 +850,7 @@ def reset_fuzzy_data():
     })
 
 @app.route('/api/monitoring-history')
+@login_required
 def get_monitoring_history():
     """API endpoint untuk mendapatkan data historis monitoring"""
     history_data = []
@@ -791,5 +872,199 @@ def get_monitoring_history():
     
     return jsonify(history_data[::-1])  # Reverse to show chronological order
 
+# Authentication Routes
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page and authentication"""
+    if request.method == 'GET':
+        # If user is already logged in, redirect to dashboard
+        if 'user_id' in session:
+            return redirect(url_for('index'))
+        return render_template('login.html')
+    
+    # Handle POST request (login form submission)
+    try:
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'message': 'Username dan password harus diisi'
+            }), 400
+        
+        # Get user from database
+        user = db_manager.get_user_by_username(username)
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'Username atau password salah'
+            }), 401
+        
+        # Verify password
+        if not verify_password(password, user['password_hash']):
+            return jsonify({
+                'success': False,
+                'message': 'Username atau password salah'
+            }), 401
+        
+        # Create session
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['full_name'] = user['full_name']
+        session['role'] = user['role']
+        session['login_time'] = datetime.datetime.now().isoformat()
+        
+        # Update last login in database
+        db_manager.update_last_login(user['id'])
+        
+        # Optional: Save session to database for additional security
+        session_token = secrets.token_urlsafe(32)
+        expires_at = datetime.datetime.now() + datetime.timedelta(hours=24)
+        
+        db_manager.save_user_session(
+            user['id'], 
+            session_token,
+            request.remote_addr or 'unknown',
+            request.headers.get('User-Agent', 'unknown'),
+            expires_at
+        )
+        
+        session['session_token'] = session_token
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login berhasil',
+            'redirect': url_for('index'),
+            'user': {
+                'username': user['username'],
+                'full_name': user['full_name'],
+                'role': user['role']
+            }
+        })
+        
+    except Exception as e:
+        print(f"Login error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Terjadi kesalahan sistem. Silakan coba lagi.'
+        }), 500
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Registration page and user creation"""
+    if request.method == 'GET':
+        # If user is already logged in, redirect to dashboard
+        if 'user_id' in session:
+            return redirect(url_for('index'))
+        return render_template('register.html')
+    
+    # Handle POST request (registration form submission)
+    try:
+        full_name = request.form.get('fullName', '').strip()
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        
+        # Validasi input
+        if not all([full_name, username, email, password]):
+            return jsonify({
+                'success': False,
+                'message': 'Semua field harus diisi'
+            }), 400
+        
+        if len(password) < 6:
+            return jsonify({
+                'success': False,
+                'message': 'Password minimal 6 karakter'
+            }), 400
+        
+        # Validasi email format sederhana
+        if '@' not in email or '.' not in email:
+            return jsonify({
+                'success': False,
+                'message': 'Format email tidak valid'
+            }), 400
+        
+        # Cek apakah username sudah ada
+        existing_user = db_manager.get_user_by_username(username)
+        if existing_user:
+            return jsonify({
+                'success': False,
+                'message': 'Username sudah digunakan'
+            }), 400
+        
+        # Hash password
+        password_hash = hash_password(password)
+        
+        # Buat user baru
+        user_id = db_manager.create_user(
+            username=username,
+            email=email,
+            password_hash=password_hash,
+            full_name=full_name,
+            role='user'  # Default role
+        )
+        
+        if user_id:
+            return jsonify({
+                'success': True,
+                'message': 'Pendaftaran berhasil! Silakan login dengan akun baru Anda.'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Gagal membuat akun. Silakan coba lagi.'
+            }), 500
+            
+    except Exception as e:
+        print(f"Registration error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Terjadi kesalahan sistem. Silakan coba lagi.'
+        }), 500
+
+@app.route('/logout')
+def logout():
+    """Logout and clear session"""
+    try:
+        # Delete session from database if exists
+        if 'session_token' in session:
+            db_manager.delete_user_session(session['session_token'])
+        
+        # Clear Flask session
+        session.clear()
+        
+        flash('Anda telah berhasil logout.', 'success')
+        return redirect(url_for('login'))
+        
+    except Exception as e:
+        print(f"Logout error: {e}")
+        session.clear()  # Clear session anyway
+        return redirect(url_for('login'))
+
+@app.route('/api/user/profile')
+@login_required
+def get_user_profile():
+    """Get current user profile"""
+    try:
+        return jsonify({
+            'success': True,
+            'user': {
+                'username': session.get('username'),
+                'full_name': session.get('full_name'),
+                'role': session.get('role'),
+                'login_time': session.get('login_time')
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
+    # Clean up expired sessions on startup
+    db_manager.cleanup_expired_sessions()
     app.run(debug=True)
